@@ -1,4 +1,4 @@
-## ----setup, class.source='fold-hide'------------------------------------------
+## ----setup, class.source='fold-hide', warning=FALSE---------------------------
 #install.packages("knitr")
 library(knitr)
 opts_chunk$set(echo = TRUE)
@@ -7,27 +7,28 @@ opts_chunk$set(echo = TRUE)
 set.seed(12)
 
 ## ----packages_installation, eval=FALSE, class.source='fold-hide'--------------
-#  pkgs <- c("ggplot2", "ggrepel", "DT", "psych", "ConsensusOPLS")
-#  sapply(pkgs, function(x) {
-#      if (!requireNamespace(x, quietly = TRUE)) {
-#          install.packages(x)
-#      }
-#  })
-#  if (!require("BiocManager", quietly = TRUE))
-#      install.packages("BiocManager")
-#  if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
-#      BiocManager::install("ComplexHeatmap")
-#  }
+# pkgs <- c("ggplot2", "ggrepel", "DT", "psych", "ConsensusOPLS")
+# sapply(pkgs, function(x) {
+#   if (!requireNamespace(x, quietly = TRUE)) {
+#     install.packages(x)
+#   }
+# })
+# if (!require("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+#   BiocManager::install("ComplexHeatmap")
+# }
 
 ## ----packages_load, warning=FALSE, message=FALSE, class.source='fold-hide'----
-library(ggplot2) # to make beautiful graphs
-library(ggrepel) # to annotate ggplot2 graph
-library(DT) # to make interactive data tables
-library(psych) # to make specific quantitative summaries
+library(ggplot2)        # to make beautiful graphs
+library(ggrepel)        # to annotate ggplot2 graph
+library(DT)             # to make interactive data tables
+library(psych)          # to make specific quantitative summaries
 library(ComplexHeatmap) # to make heatmap with density plot
-library(ConsensusOPLS) # to load ConsensusOPLS
+library(ConsensusOPLS)  # to load ConsensusOPLS
 
-## ----theme_ggplot2, class.source='fold-hide'----------------------------------
+## ----theme_ggplot2------------------------------------------------------------
+require(ggplot2)
 theme_graphs <- theme_bw() + theme(strip.text = element_text(size=14),
                                    axis.title = element_text(size=16),
                                    axis.text = element_text(size=14),
@@ -48,21 +49,34 @@ dims
 # Remove unuseful object for the next steps
 rm(dims)
 
-## ----check_orders, class.source='fold-hide'-----------------------------------
-rns <- do.call(cbind, lapply(X=demo_3_Omics[BlockNames], rownames))
+## ----check_orders_and_names, class.source='fold-hide'-------------------------
+# Check rows names in any order
+row_names <- lapply(X=demo_3_Omics[BlockNames], FUN=rownames)
+rns <- do.call(cbind, row_names)
 rns.unique <- apply(rns, 1, function(x) length(unique(x)))
-stopifnot(max(rns.unique) == 1)
+if (max(rns.unique) > 1) {
+  stop("Rows names are not identical between blocks.")
+}
+
+# Check order of samples
+check_row_names <- all(sapply(X=row_names, FUN=identical, y = row_names[[1]]))
+if (!check_row_names && max(rns.unique) == 1) {
+  print("Rows names are not in the same order for all blocks.")
+}
+
+# Remove unuseful object for the next steps
+rm(row_names, rns, rns.unique, check_row_names)
 
 ## ----describe_data_by_Y_function, class.source='fold-hide'--------------------
 require(psych)
 require(DT)
 describe_data_by_Y <- function(data, group) {
-    bloc_by_Y <- describeBy(x = data, group = group,
-                            mat = TRUE)[, c("group1", "n", "mean", "sd",
-                                            "median", "min", "max", "range",
-                                            "se")]
-    bloc_by_Y[3:ncol(bloc_by_Y)] <- round(bloc_by_Y[3:ncol(bloc_by_Y)], 
-                                          digits = 2)
+  bloc_by_Y <- describeBy(x = data, group = group,
+                          mat = TRUE)[, c("group1", "n", "mean", "sd",
+                                          "median", "min", "max", "range",
+                                          "se")]
+  bloc_by_Y[3:ncol(bloc_by_Y)] <- round(bloc_by_Y[3:ncol(bloc_by_Y)], 
+                                        digits = 2)
   return (datatable(bloc_by_Y))
 }
 
@@ -83,8 +97,10 @@ describe_data_by_Y(data = demo_3_Omics[[BlockNames[3]]],
 demo_3_Omics_not_scaled <- demo_3_Omics
 
 # Scaling data
-demo_3_Omics[BlockNames] <- lapply(X=demo_3_Omics[BlockNames], FUN=function(x)
-    scale(x, center = TRUE, scale = TRUE)
+demo_3_Omics[BlockNames] <- lapply(X = demo_3_Omics[BlockNames], 
+                                   FUN = function(x){
+                                     scale(x, center = TRUE, scale = TRUE)
+                                   }
 )
 
 ## ----heatmap_function, message = FALSE, class.source='fold-hide'--------------
@@ -160,7 +176,7 @@ copls.da <- ConsensusOPLS(data = demo_3_Omics[BlockNames],
                           maxPcomp = LVsPred,
                           maxOcomp  = LVsOrtho,
                           modelType = "da",
-                          nperm = 100,
+                          nperm = 1000,
                           cvType = "nfold",
                           nfold = 14,
                           nMC = 100,
@@ -169,23 +185,22 @@ copls.da <- ConsensusOPLS(data = demo_3_Omics[BlockNames],
                                               params = c(order = 1)),
                           mc.cores = 1)
 
-## ----outputs_model------------------------------------------------------------
-print("The main results of the ConsensusOPLS analysis:")
+## ----outputs_model_summary, class.source='fold-hide'--------------------------
 copls.da
 
-print("List of available outputs in the ConsensusOPLS object:")
+## ----outputs_model_attributes, class.source='fold-hide'-----------------------
 summary(attributes(copls.da))
 
 ## ----print_main_results_R2, class.source='fold-hide'--------------------------
 position <- copls.da@nOcomp
 
-paste0('R2: ', round(copls.da@R2Y[position], 4))
+paste0('R2: ', round(copls.da@R2Y[paste0("po", position)], 4))
 
 ## ----print_main_results_Q2, class.source='fold-hide'--------------------------
-paste0('Q2: ', round(copls.da@Q2[position], 4))
+paste0('Q2: ', round(copls.da@Q2[paste0("po", position)], 4))
 
 ## ----print_main_results_DQ2, class.source='fold-hide'-------------------------
-paste0('DQ2: ', round(copls.da@DQ2[position], 4))
+paste0('DQ2: ', round(copls.da@DQ2[paste0("po", position)], 4))
 
 ## ----extract_VIP, class.source='fold-hide'------------------------------------
 # Compute the VIP
@@ -194,9 +209,9 @@ VIP <- copls.da@VIP
 # Multiply VIP * sign(loadings for predictive component)
 VIP_plot <- lapply(X = 1:nbrBlocs,
                    FUN = function(X){
-                       sign_loadings <- sign(copls.da@loadings[[X]][, "p_1"])
-                       result <- VIP[[X]][, "p"]*sign_loadings
-                       return(sort(result, decreasing = TRUE))})
+                     sign_loadings <- sign(copls.da@loadings[[X]][, "p_1"])
+                     result <- VIP[[X]][, "p"]*sign_loadings
+                     return(sort(result, decreasing = TRUE))})
 names(VIP_plot) <- BlockNames
 
 ## ----plot_VIP, class.source='fold-hide'---------------------------------------
@@ -244,10 +259,10 @@ ggplot(data = data.frame(
 
 ## ----ggplot_score_data, class.source='fold-hide', warning=FALSE---------------
 ggplot(data = data.frame("p_1" = copls.da@scores[, "p_1"],
-                                  "o_1" = copls.da@scores[, "o_1"],
-                                  "Labs" = as.matrix(unlist(demo_3_Omics$ObsNames[, 1]))),
-                aes(x = p_1, y = o_1, label = Labs, 
-                    shape = Labs, colour = Labs)) +
+                         "o_1" = copls.da@scores[, "o_1"],
+                         "Labs" = as.matrix(unlist(demo_3_Omics$ObsNames[, 1]))),
+       aes(x = p_1, y = o_1, label = Labs, 
+           shape = Labs, colour = Labs)) +
   xlab("Predictive component") +
   ylab("Orthogonal component") +
   ggtitle("ConsensusOPLS Score plot")+
@@ -263,7 +278,8 @@ ggplot(
   aes(x = Blocks, y = Values,
       fill = Blocks, labels = Values)) +
   geom_bar(stat = 'identity') + 
-  geom_text(aes(label=round(Values, 2)), vjust=-0.3) +
+  geom_text(aes(label = round(Values, 2), y = Values), 
+            vjust = 1.5, color = "black", fontface = "bold") +
   ggtitle("Block contributions to the predictive component")+
   xlab("Data blocks") +
   ylab("Weight") +
@@ -278,7 +294,8 @@ ggplot(
   aes(x = Blocks, y = Values,
       fill = Blocks, labels = Values)) +
   geom_bar(stat = 'identity') + 
-  geom_text(aes(label=round(Values, 2)), vjust=-0.3) +
+  geom_text(aes(label = round(Values, 2), y = Values), 
+            vjust = 1.5, color = "black", fontface = "bold") +
   ggtitle("Block contributions to the first orthogonal component") +
   xlab("Data blocks") +
   ylab("Weight") +
@@ -302,7 +319,8 @@ ggplot(data = data_two_plots,
            fill = factor(Type))) +
   geom_bar(stat = 'identity') + 
   ggtitle("Block contributions to each component")+
-  geom_text(aes(label=round(Values, 2)), vjust=-0.3) +
+  geom_text(aes(label = round(Values, 2), y = Values), 
+            vjust = 1.5, color = "black", fontface = "bold") +
   xlab("Data blocks") +
   ylab("Weight") +
   facet_wrap(. ~ Blocks)+
@@ -312,20 +330,21 @@ ggplot(data = data_two_plots,
 
 ## ----plot_bloc_PredVSOrtho_bis, message = FALSE, class.source='fold-hide'-----
 ggplot(data = data_two_plots,
-                           aes(x = Blocks, 
-                               y = Values, 
-                               fill = Blocks)) +
-    geom_bar(stat = 'identity') +
-    geom_text(aes(label=round(Values, 2)), vjust=-0.3) +
-    ggtitle("Block contributions to each component") +
-    xlab("Components") +
-    ylab("Weight") +
-    facet_wrap(. ~ factor(Type)) +
-    theme_graphs +
-    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-          plot.title = element_text(hjust = 0.5, 
-                                    margin = margin(t = 5, r = 0, b = 0, l = 100))) +
-    scale_fill_manual(values = c("#1B9E77", "#D95F02", "#7570B3"))
+       aes(x = Blocks, 
+           y = Values, 
+           fill = Blocks)) +
+  geom_bar(stat = 'identity') +
+  geom_text(aes(label = round(Values, 2), y = Values), 
+            vjust = 1.5, color = "black", fontface = "bold") +
+  ggtitle("Block contributions to each component") +
+  xlab("Components") +
+  ylab("Weight") +
+  facet_wrap(. ~ factor(Type, levels = c("Pred", "Ortho"))) +
+  theme_graphs +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+        plot.title = element_text(hjust = 0.5, 
+                                  margin = margin(t = 5, r = 0, b = 0, l = 100))) +
+  scale_fill_manual(values = c("#1B9E77", "#D95F02", "#7570B3"))
 
 ## ----ggplot_data_pred_vs_ortho, message = FALSE, warning = FALSE, class.source='fold-hide'----
 ggplot(data = data.frame("Pred" = copls.da@blockContribution[, "p_1"],
@@ -347,12 +366,12 @@ data_loads <- sapply(X = 1:nbrBlocs,
                      FUN = function(X){
                        data.frame("Pred" = 
                                     loadings[[X]][, grep(pattern = "p_",
-                                                               x = colnames(loadings[[X]]),
-                                                               fixed = TRUE)],
+                                                         x = colnames(loadings[[X]]),
+                                                         fixed = TRUE)],
                                   "Ortho" = 
                                     loadings[[X]][, grep(pattern = "o_",
-                                                               x = colnames(loadings[[X]]),
-                                                               fixed = TRUE)],
+                                                         x = colnames(loadings[[X]]),
+                                                         fixed = TRUE)],
                                   "Labels" = labels(demo_3_Omics[1:nbrBlocs])[[X]])
                      })
 data_loads <- as.data.frame(data_loads)
@@ -377,18 +396,18 @@ ggplot() +
 ## ----create_data_loadings_VIP-------------------------------------------------
 loadings <- do.call(rbind.data.frame, copls.da@loadings)
 loadings$block <- do.call(c, lapply(names(copls.da@loadings), function(x) 
-    rep(x, nrow(copls.da@loadings[[x]]))))
+  rep(x, nrow(copls.da@loadings[[x]]))))
 loadings$variable <- gsub(paste(paste0(names(copls.da@loadings), '.'), 
                                 collapse='|'), '', 
                           rownames(loadings))
 
 VIP <- do.call(rbind.data.frame, copls.da@VIP)
 VIP$block <- do.call(c, lapply(names(copls.da@VIP), function(x) 
-    rep(x, nrow(copls.da@VIP[[x]]))))
+  rep(x, nrow(copls.da@VIP[[x]]))))
 VIP$variable <- gsub(paste(paste0(names(copls.da@VIP), '.'), 
-                                collapse='|'), '', 
-                          rownames(VIP))
-        
+                           collapse='|'), '', 
+                     rownames(VIP))
+
 loadings_VIP <- merge(x = loadings[, c("p_1", "variable")], 
                       y = VIP[, c("p", "variable")], 
                       by = "variable", all = TRUE)
@@ -411,7 +430,7 @@ ggplot(data = loadings_VIP,
 ## ----run_permutations, warning=FALSE------------------------------------------
 PermRes <- copls.da@permStats
 
-## ----plot_R2_perm, class.source='fold-hide'-----------------------------------
+## ----plot_R2_perm, warning=FALSE, class.source='fold-hide'--------------------
 ggplot(data = data.frame("R2Yperm" = PermRes$R2Y),
        aes(x = R2Yperm)) +
   geom_histogram(aes(y = after_stat(density)), bins = 30,
@@ -424,7 +443,7 @@ ggplot(data = data.frame("R2Yperm" = PermRes$R2Y),
   ggtitle("R2 Permutation test")+
   theme_graphs
 
-## ----plot_Q2_perm, message = FALSE, class.source='fold-hide'------------------
+## ----plot_Q2_perm, warning=FALSE, class.source='fold-hide'--------------------
 ggplot(data = data.frame("Q2Yperm" = PermRes$Q2Y),
        aes(x = Q2Yperm)) +
   geom_histogram(aes(y = after_stat(density)), bins = 30,
@@ -437,7 +456,7 @@ ggplot(data = data.frame("Q2Yperm" = PermRes$Q2Y),
   ggtitle("Q2 Permutation test")+
   theme_graphs
 
-## ----plot_DQ2_perm, message = FALSE, class.source='fold-hide'-----------------
+## ----plot_DQ2_perm, warning=FALSE, class.source='fold-hide'-------------------
 ggplot(data = data.frame("DQ2Yperm" = PermRes$DQ2Y),
        aes(x = DQ2Yperm)) +
   geom_histogram(aes(y = after_stat(density)), bins = 30,
@@ -449,6 +468,13 @@ ggplot(data = data.frame("DQ2Yperm" = PermRes$DQ2Y),
   ylab("Frequency") +
   ggtitle("DQ2 Permutation test")+
   theme_graphs
+
+## ----prediction---------------------------------------------------------------
+reprediction <- predict(copls.da, newdata = demo_3_Omics[BlockNames])
+
+## ----prediction_output--------------------------------------------------------
+reprediction$Y
+reprediction$class
 
 ## ----reproducibility----------------------------------------------------------
 sessionInfo()
